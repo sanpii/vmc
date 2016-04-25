@@ -1,0 +1,227 @@
+#!/bin/bash
+
+set -e
+
+if [[ ! -e ~/.config/vmc ]]
+then
+    >&2 echo 'No configuration found'
+    exit 1
+else
+    . ~/.config/vmc
+fi
+
+if [[ -z "$GPIO_INT1" || -z "$GPIO_INT2" ]]
+then
+    readonly HAVE_GPIO=false
+else
+    readonly HAVE_GPIO=true
+fi
+
+# {{{ GPIO
+function set_gpio()
+{
+    $HAVE_GPIO || return 0
+
+    local gpio=$1
+    local state=$2
+
+    echo "$state" > "/sys/class/gpio/gpio$gpio/value"
+}
+
+function setup_gpio()
+{
+    $HAVE_GPIO || return 0
+
+    for gpio in $GPIO_INT1 $GPIO_INT2
+    do
+        if [[ ! -e "/sys/class/gpio/gpio$gpio" ]]
+        then
+            echo $gpio > /sys/class/gpio/export
+            echo out > "/sys/class/gpio/gpio$gpio/direction"
+        fi
+    done
+}
+
+function configure_gpio()
+{
+    $HAVE_GPIO || return 0
+
+    local state=$1
+
+    case "$state" in
+        off|pulse0|auto0)
+            set_gpio $GPIO_INT1 0
+        ;;
+        on|pulse1|auto1)
+            set_gpio $GPIO_INT1 1
+            set_gpio $GPIO_INT2 0
+        ;;
+        pulse2|auto2)
+            set_gpio $GPIO_INT1 1
+            set_gpio $GPIO_INT2 1
+        ;;
+    esac
+}
+# }}}
+
+# {{{ state
+function pub_state()
+{
+    local state=$1
+    local speed
+    local forced
+
+    case "$state" in
+        "off|pulse0")
+            speed=0
+            forced=true
+        ;;
+        "on|pulse1")
+            speed=1
+            forced=true
+        ;;
+        "pulse2")
+            speed=2
+            forced=true
+        ;;
+        "auto0")
+            speed=0
+            forced=false
+        ;;
+        "auto1")
+            speed=1
+            forced=false
+        ;;
+        "auto2")
+            speed=2
+            forced=false
+        ;;
+    esac
+
+    mosquitto_pub -h $MQTT_HOST -t domotic/vmc -m '{"speed":'$speed', "forced":'$forced'}'
+}
+
+function set_state()
+{
+    local state=$1
+
+    if [[ $state != $(get_state) ]]
+    then
+        echo "$state" > /tmp/vmc_state
+        configure_gpio "$state"
+        pub_state "$state"
+
+        if [[ "$state" =~ pulse* ]]
+        then
+            reset_state &
+        fi
+    fi
+}
+
+function get_state()
+{
+    if [[ ! -f /tmp/vmc_state ]]
+    then
+        touch /tmp/vmc_state
+    fi
+
+    cat /tmp/vmc_state
+}
+
+function reset_state()
+{
+    sleep 1800
+
+    if [[ "$state" =~ pulse* ]]
+    then
+        set_state 'auto1'
+    fi
+}
+# }}}
+
+function comp()
+{
+    local a=$1
+    local op=$2
+    local b=$3
+
+    if [[ $(echo "$a $op $b" | bc) -eq 1 ]]
+    then
+        echo true
+    fi
+}
+
+function listen_mqtt_state()
+{
+    while read TOPIC STATE
+    do
+        set_state "$STATE"
+    done < <(mosquitto_sub -h $MQTT_HOST -v -t domotic/vmc/state)
+}
+
+function get_weather()
+{
+    local json=$1
+
+    local temperature_indoor=$(echo -n $json | jq '.temperature_indoor')
+    local temperature_outdoor=$(echo -n $json | jq '.temperature_outdoor')
+    local humidity_outdoor=$(echo -n $json | jq '.humidity_outdoor')
+
+    echo "( \
+        ['temperature_indoor']=$temperature_indoor \
+        ['temperature_outdoor']=$temperature_outdoor \
+        ['humidity_outdoor']=$humidity_outdoor \
+    )"
+}
+
+function listen_mqtt_weather()
+{
+    while read TOPIC JSON
+    do
+        eval "declare -A weather=$(get_weather $JSON)"
+
+        if [[ $(get_state) =~ auto* ]]
+        then
+            if [[ $(comp ${weather['humidity_outdoor']} '>' $MAX_HUMIDITY) ]]
+            then
+                set_state 'auto0'
+            elif [[ $WINTER -eq 1 ]]
+            then
+                if [[ $(comp ${weather['temperature_outdoor']} '<' $MIN_TEMPERATURE) ]]
+                then
+                    set_state 'auto0'
+                elif [[ $(comp ${weather['temperature_indoor']} '<=' ${weather['temperature_outdoor']}) ]]
+                then
+                    set_state 'auto2'
+                else
+                    set_state 'auto1'
+                fi
+            else
+                if [[ $(comp ${weather['temperature_outdoor']} '>' $MAX_TEMPERATURE) ]]
+                then
+                    set_state 'auto0'
+                elif [[ $(comp ${weather['temperature_indoor']} '>=' ${weather['temperature_outdoor']}) ]]
+                then
+                    set_state 'auto2'
+                else
+                    set_state 'auto1'
+                fi
+            fi
+        fi
+
+    done < <(mosquitto_sub -h $MQTT_HOST -v -t domotic/weather)
+}
+
+function main()
+{
+    setup_gpio
+    set_state 'auto1'
+
+    listen_mqtt_state &
+    listen_mqtt_weather
+}
+
+trap 'set_state auto1' EXIT
+trap 'rm /tmp/vmc_state' EXIT
+
+main $*
