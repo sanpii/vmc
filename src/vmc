@@ -185,7 +185,7 @@ function listen_mqtt_weather()
             if [[ $(comp ${weather['humidity_outdoor']} '>' $MAX_HUMIDITY) ]]
             then
                 set_state 'auto0'
-            elif [[ $WINTER -eq 1 ]]
+            elif [[ $SEASON = 'winter' ]]
             then
                 if [[ $(comp ${weather['temperature_outdoor']} '<' $MIN_TEMPERATURE) ]]
                 then
@@ -196,7 +196,8 @@ function listen_mqtt_weather()
                 else
                     set_state 'auto1'
                 fi
-            else
+            elif [[ $SEASON = 'summer' ]]
+            then
                 if [[ $(comp ${weather['temperature_outdoor']} '>' $MAX_TEMPERATURE) ]]
                 then
                     set_state 'auto0'
@@ -206,6 +207,8 @@ function listen_mqtt_weather()
                 else
                     set_state 'auto1'
                 fi
+            else
+                set_state 'auto1'
             fi
         fi
 
