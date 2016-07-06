@@ -98,7 +98,7 @@ function pub_state()
         ;;
     esac
 
-    mosquitto_pub -h $MQTT_HOST -t domotic/vmc -m '{"speed":'$speed', "forced":'$forced'}'
+    mosquitto_pub -h $MQTT_HOST -u $MQTT_USER -P "$MQTT_PASSWORD" -t domotic/vmc -m '{"speed":'$speed', "forced":'$forced'}'
 }
 
 function set_state()
@@ -156,7 +156,7 @@ function listen_mqtt_state()
     while read TOPIC STATE
     do
         set_state "$STATE"
-    done < <(mosquitto_sub -h $MQTT_HOST -v -t domotic/vmc/state)
+    done < <(mosquitto_sub -h $MQTT_HOST -u $MQTT_USER -P "$MQTT_PASSWORD" -v -t domotic/vmc/state)
 }
 
 function get_weather()
@@ -212,7 +212,7 @@ function listen_mqtt_weather()
             fi
         fi
 
-    done < <(mosquitto_sub -h $MQTT_HOST -v -t domotic/weather)
+    done < <(mosquitto_sub -h $MQTT_HOST -u $MQTT_USER -P "$MQTT_PASSWORD" -v -t domotic/weather)
 }
 
 function main()
