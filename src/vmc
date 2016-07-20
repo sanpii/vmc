@@ -38,41 +38,71 @@ function listen_mqtt_weather()
 {
     while read TOPIC JSON
     do
-        eval "declare -A weather=$(get_weather $JSON)"
-
         if [[ $(get_state) =~ auto* ]]
         then
-            if [[ $(comp ${weather['humidity_outdoor']} '>' $MAX_HUMIDITY) ]]
-            then
-                set_state 'auto0'
-            elif [[ $SEASON = 'winter' ]]
-            then
-                if [[ $(comp ${weather['temperature_outdoor']} '<' $MIN_TEMPERATURE) ]]
-                then
-                    set_state 'auto0'
-                elif [[ $(comp ${weather['temperature_indoor']} '<=' ${weather['temperature_outdoor']}) ]]
-                then
-                    set_state 'auto2'
-                else
-                    set_state 'auto1'
-                fi
-            elif [[ $SEASON = 'summer' ]]
-            then
-                if [[ $(comp ${weather['temperature_outdoor']} '>' $MAX_TEMPERATURE) ]]
-                then
-                    set_state 'auto0'
-                elif [[ $(comp ${weather['temperature_indoor']} '>=' ${weather['temperature_outdoor']}) ]]
-                then
-                    set_state 'auto2'
-                else
-                    set_state 'auto1'
-                fi
-            else
-                set_state 'auto1'
-            fi
+            function_exists "$SEASON" && eval $SEASON
         fi
-
     done < <(mosquitto_sub -h "$MQTT_HOST" -u "$MQTT_USER" -P "$MQTT_PASSWORD" -v -t domotic/weather)
+}
+
+function spring()
+{
+    eval "declare -A weather=$(get_weather $JSON)"
+
+    if [[ $(comp ${weather['humidity_outdoor']} '>' $MAX_HUMIDITY) ]]
+    then
+        set_state 'auto0'
+    else
+        set_state 'auto1'
+    fi
+}
+
+function summer()
+{
+    eval "declare -A weather=$(get_weather $JSON)"
+
+    if [[ $(comp ${weather['temperature_outdoor']} '>' $MAX_TEMPERATURE) ]]
+    then
+        set_state 'auto0'
+    elif [[ $(comp ${weather['temperature_indoor']} '>=' ${weather['temperature_outdoor']}) ]]
+    then
+        set_state 'auto2'
+    elif [[ $(comp ${weather['humidity_outdoor']} '>' $MAX_HUMIDITY) ]]
+    then
+        set_state 'auto0'
+    else
+        set_state 'auto1'
+    fi
+}
+
+function autumn()
+{
+    eval "declare -A weather=$(get_weather $JSON)"
+
+    if [[ $(comp ${weather['humidity_outdoor']} '>' $MAX_HUMIDITY) ]]
+    then
+        set_state 'auto0'
+    else
+        set_state 'auto1'
+    fi
+}
+
+function winter()
+{
+    eval "declare -A weather=$(get_weather $JSON)"
+
+    if [[ $(comp ${weather['humidity_outdoor']} '>' $MAX_HUMIDITY) ]]
+    then
+        set_state 'auto0'
+    elif [[ $(comp ${weather['temperature_outdoor']} '<' $MIN_TEMPERATURE) ]]
+    then
+        set_state 'auto0'
+    elif [[ $(comp ${weather['temperature_indoor']} '<=' ${weather['temperature_outdoor']}) ]]
+    then
+        set_state 'auto2'
+    else
+        set_state 'auto1'
+    fi
 }
 
 function get_weather()
@@ -222,6 +252,13 @@ function comp()
     then
         echo true
     fi
+}
+
+function_exists ()
+{
+    local function=$1
+
+    type $function >/dev/null 2>&1
 }
 
 trap 'set_state auto1' EXIT
