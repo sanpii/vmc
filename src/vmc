@@ -40,7 +40,10 @@ function listen_mqtt_weather()
     do
         if [[ $(get_state) =~ auto* ]]
         then
-            function_exists "$SEASON" && eval $SEASON
+            if [[ $JSON != "(null)" ]]
+            then
+                function_exists "$SEASON" && eval "$SEASON '$JSON'"
+            fi
         fi
     done < <(mosquitto_sub -h "$MQTT_HOST" -u "$MQTT_USER" -P "$MQTT_PASSWORD" -v -t domotic/weather)
 }
