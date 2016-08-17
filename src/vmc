@@ -50,7 +50,8 @@ function listen_mqtt_weather()
 
 function spring()
 {
-    eval "declare -A weather=$(get_weather $JSON)"
+    local json=$1
+    eval "declare -A weather=$(get_weather $json)"
 
     if [[ $(comp ${weather['humidity_outdoor']} '>' $MAX_HUMIDITY) ]]
     then
@@ -62,7 +63,8 @@ function spring()
 
 function summer()
 {
-    eval "declare -A weather=$(get_weather $JSON)"
+    local json=$1
+    eval "declare -A weather=$(get_weather $json)"
 
     if [[ $(comp ${weather['temperature_outdoor']} '>' $MAX_TEMPERATURE) ]]
     then
@@ -80,7 +82,8 @@ function summer()
 
 function autumn()
 {
-    eval "declare -A weather=$(get_weather $JSON)"
+    local json=$1
+    eval "declare -A weather=$(get_weather $json)"
 
     if [[ $(comp ${weather['humidity_outdoor']} '>' $MAX_HUMIDITY) ]]
     then
@@ -92,7 +95,8 @@ function autumn()
 
 function winter()
 {
-    eval "declare -A weather=$(get_weather $JSON)"
+    local json=$1
+    eval "declare -A weather=$(get_weather $json)"
 
     if [[ $(comp ${weather['humidity_outdoor']} '>' $MAX_HUMIDITY) ]]
     then
