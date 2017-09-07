@@ -137,8 +137,8 @@ function setup_gpio()
         if [[ ! -e "/sys/class/gpio/gpio$gpio" ]]
         then
             echo $gpio > /sys/class/gpio/export
-            echo out > "/sys/class/gpio/gpio$gpio/direction"
         fi
+        echo out > "/sys/class/gpio/gpio$gpio/direction"
     done
 }
 
